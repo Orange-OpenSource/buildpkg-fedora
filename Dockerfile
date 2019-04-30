@@ -14,10 +14,3 @@ RUN yum-add-gitlab Orange-OpenSource/gitlab-buildpkg-tools \
      && dnf install -y -v gitlab-buildpkg-tools \
      && dnf clean all 
 
-RUN sed -i \
-        -e 's|^metalink=|#metalink=|' \
-        -e 's|^#baseurl=|baseurl=|' \
-        /etc/yum.repos.d/*.repo \
-    && dnf clean all
-
-
