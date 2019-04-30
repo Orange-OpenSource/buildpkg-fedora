@@ -9,8 +9,8 @@ RUN dnf install -y -v \
         curl gnupg \
     && dnf clean all
 
-#COPY yum-add-gitlab /usr/bin/
-#RUN yum-add-gitlab Orange-OpenSource/gitlab-buildpkg-tools \
-#     && dnf install -y -v gitlab-buildpkg-tools \
-#     && dnf clean all 
+COPY yum-add-gitlab /usr/bin/
+RUN yum-add-gitlab Orange-OpenSource/gitlab-buildpkg-tools \
+     && dnf install -y -v gitlab-buildpkg-tools \
+     && dnf clean all 
 
