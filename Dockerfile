@@ -1,4 +1,4 @@
-FROM fedora:latest
+FROM fedora:29
 MAINTAINER Michel Decima <michel.decima@orange.com>
 
 RUN dnf install -y -v \
