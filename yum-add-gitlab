@@ -11,7 +11,7 @@
 #  by the Free Software Foundation.
 # 
 
-PPA_HOST="gitlab.io"
+PAGES_HOST=${PAGES_HOST:-@@PAGES_HOST@@}
 
 die() {
     echo "$(basename $0): $@" >&2 ; exit 1
@@ -36,9 +36,9 @@ RELEASE_NAME=$(egrep -o '[0-9.]{1,}' /etc/system-release | cut -d. -f1)
 
 #############################################################################
 
-ppa_yum_print() {		# project_namespace project_name
-    local repo_name="$1-$2"
-    local ppa_url="http://$1.$PPA_HOST/$2"
+ppa_yum_print() {               # ppa_slug ppa_url
+    local repo_name="$1"
+    local ppa_url="$2"
     cat << EOF
 [$repo_name]
 name=Gitlab $repo_name - $RELEASE_NAME - \$basearch
@@ -48,7 +48,7 @@ metadata_expire=15m
 gpgcheck=1
 repo_gpgcheck=0
 gpgkey=$ppa_url/GPG_PUBLIC_KEY
-skip_if_unavailable=False
+skip_if_unavailable=True
 
 [$repo_name-source]
 name=Gitlab $repo_name - $RELEASE_NAME - Sources
@@ -62,29 +62,33 @@ skip_if_unavailable=True
 EOF
 }
 
-ppa_yum_install() {                 # project_namespace project_name
-    local yum_repo="/etc/yum.repos.d/gitlab-$1-$2.repo"
-    local key_url="http://$1.$PPA_HOST/$2/GPG_PUBLIC_KEY"
-    local key_file="/etc/pki/rpm-gpg/gitlab-$1-$2.gpgkey"
+ppa_yum_install() {                 # ppa_slug ppa_url
+    local yum_repo="/etc/yum.repos.d/gitlab-$1.repo"
+    local key_url="$2/GPG_PUBLIC_KEY"
+    local key_file="/etc/pki/rpm-gpg/gitlab-$1.gpgkey"
     curl -fLsS -o $key_file $key_url \
         && rpm --import $key_file \
         || die "import key failed: $key_url"
-    ppa_yum_print $@ > $yum_repo \
+    ppa_yum_print "$1" "$2" > $yum_repo \
         || die "install repo failed: $yum_repo"
 }
 
-ppa_yum_remove() {                  # project_namespace project_name
-    local yum_repo="/etc/yum.repos.d/gitlab-$1-$2.repo"
+ppa_yum_remove() {                  # ppa_slug ppa_url
+    local yum_repo="/etc/yum.repos.d/gitlab-$1.repo"
     rm -v $yum_repo
 }
 
 ppa_yum_help() {
     cat << EOF
-Usage: $(basename $0) [OPTION]... PROJECT [PROJECT]...
+sage: $(basename $0) [OPTION]... [PROJECT_NICKNAME|PPA_URL]...
+
+Argument may be a project nickname (namespace/group) or a PPA URL.
+If an URL is given, option -h|--host is ignored.
 
 Examples:
-     yum-add-gitlab Orange-OpenSource/gitlab-buildipkg-tools
-     yum-add-gitlab --remove Orange-OpenSource/gitlab-buildipkg-tools
+     $(basename $0) Orange-OpenSource/gitlab-buildpkg-tools
+     $(basename $0) http://orange-opensource.example.com/gitlab-buildpkg-tools
+     $(basename $0) --remove Orange-OpenSource/gitlab-buildpkg-tools
 
 EOF
 }
@@ -93,34 +97,46 @@ EOF
 
 ARGPARSER=$(getopt \
     -o rH: \
-    --long help,removei,host: \
+    --long help,remove,host: \
     -n $(basename $0) -- "$@")
 if [ $? != 0 ] ; then die "getopt failed" ; fi
 eval set -- "$ARGPARSER"
 while true ; do
     case "$1" in
-        --help)         ppa_yum_help ; exit 0 ;;
+        --help)         ppa_apt_help ; exit 0 ;;
         --remove)       REMOVE=yes ; shift ;;
-        -H|--host)      PPA_HOST=$2 ; shift 2 ;;
+        -H|--host)      PAGES_HOST=$2 ; shift 2 ;;
         --)             shift ; break ;;
         *)              die "Internal error!" ;;
     esac
 done
 
-for project in $@ ; do
-    project_namespace=$(cut -d/ -f1 <<< "$project")
-    project_name=$(cut -d/ -f2 <<< "$project")
-    if [ "$project" != "$project_namespace/$project_name" ] ; then
-        die "bad argument: $project"
-    fi
+for arg in "$@" ; do
+    case "$arg" in
+        http://*|https://*)
+            path=$(sed -e 's|https\?://||' -e 's|/*$||' <<< "$arg")
+            project_namespace=$(cut -d. -f1 <<< "$path")
+            project_name=$(cut -d/ -f2- <<< "$path")
+            ppa_url="$arg"
+            ;;
+        *)
+            project_namespace=$(cut -d/ -f1 <<< "$arg")
+            project_name=$(cut -d/ -f2- <<< "$arg")
+            if [ "$arg" != "$project_namespace/$project_name" ] ; then
+                die "bad argument: $arg"
+            fi
+            ppa_url="http://$project_namespace.$PAGES_HOST/$project_name"
+            ;;
+    esac
+    ppa_url=$(sed -e 's|/*$||' <<< "$ppa_url")
+    ppa_slug=$(tr '/[:upper:]' '-[:lower:]' <<< "$project_namespace/$project_name")
+
     if [ "$REMOVE" = "yes" ] ; then
         (( EUID == 0 )) || die "not root"
-        ppa_yum_remove $project_namespace $project_name \
-            || die "remove failed: $project"
+        ppa_yum_remove $ppa_slug $ppa_url || die "remove failed: $arg"
     else
         (( EUID == 0 )) || die "not root"
-        ppa_yum_install $project_namespace $project_name \
-            || die "install failed: $project"
+        ppa_yum_install $ppa_slug $ppa_url || die "install failed: $arg"
     fi     
 done
 
