@@ -11,7 +11,7 @@
 #  by the Free Software Foundation.
 # 
 
-PAGES_HOST=${PAGES_HOST:-@@PAGES_HOST@@}
+PAGES_HOST=${PAGES_HOST:-gitlab.io}
 
 die() {
     echo "$(basename $0): $@" >&2 ; exit 1
